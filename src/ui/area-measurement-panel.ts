@@ -40,6 +40,16 @@ class AreaMeasurementPanel extends Panel {
         this.exitBtn = new Button({ text: 'Close', size: 'small' });
         this.ridgeToggleBtn = new Button({ text: 'Start Ridges', size: 'small' });
 
+        // Layout: narrower panel + scrollable lists
+        (this.dom as HTMLElement).style.maxWidth = '380px';
+        (this.dom as HTMLElement).style.width = '380px';
+        (this.pointsContainer.dom as HTMLElement).style.maxHeight = '260px';
+        (this.pointsContainer.dom as HTMLElement).style.overflowY = 'auto';
+        (this.pointsContainer.dom as HTMLElement).style.paddingRight = '4px';
+        (this.edgesContainer.dom as HTMLElement).style.maxHeight = '140px';
+        (this.edgesContainer.dom as HTMLElement).style.overflowY = 'auto';
+        (this.edgesContainer.dom as HTMLElement).style.paddingRight = '4px';
+
         // Bind actions robustly (both PCUI and raw DOM)
         const bindBtn = (btn: Button, action: () => void) => {
             btn.on('click', action);
