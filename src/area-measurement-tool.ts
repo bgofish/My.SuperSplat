@@ -10,12 +10,16 @@ export type AreaMeasurementData = {
     closed: boolean;
     area: number | null;
     redoIndex: number | null;
+    nonPlanarity: { rms: number; max: number } | null;
+    splitSelection: number[] | null;
+    splitAreas: { a: number; b: number; total: number } | null;
 };
 
 enum AreaState {
     INACTIVE = 0,
     ACTIVE = 1,
-    WAITING_REDO = 2
+    WAITING_REDO = 2,
+    SPLIT_SELECT = 3
 }
 
 const EPS = 1e-6;
@@ -32,6 +36,8 @@ class AreaMeasurementTool {
     private pointerMoveHandler: (event: PointerEvent) => void;
     private pointerUpHandler: (event: PointerEvent) => void;
     private redoIndex: number | null = null;
+    private splitSelection: number[] = [];
+    private splitAreas: { a: number; b: number; total: number } | null = null;
 
     private clicksDisabled = false;
     private lastButtonClickTime = 0;
@@ -61,6 +67,9 @@ class AreaMeasurementTool {
         this.events.on('area.measure.closePolygon', () => this.closePolygon());
         this.events.on('area.measure.redo', (index: number) => this.prepareRedo(index));
         this.events.on('area.measure.disable.temporary', () => this.temporarilyDisableClicks());
+        this.events.on('area.measure.split.start', () => this.startSplit());
+        this.events.on('area.measure.split.cancel', () => this.cancelSplit());
+        this.events.on('area.measure.split.select', (index: number) => this.pickSplitIndex(index));
     }
 
     toggle() {
@@ -78,6 +87,10 @@ class AreaMeasurementTool {
         this.points = [];
         this.closed = false;
         this.redoIndex = null;
+        this.splitSelection = [];
+        this.splitAreas = null;
+        // ensure any previous split mode in UI is cancelled
+        this.events.fire('area.measure.split.cancel');
 
         // Show the area measurement panel and overlay
         setTimeout(() => {
@@ -124,6 +137,8 @@ class AreaMeasurementTool {
         }, 2);
 
         this.events.fire('area.measure.visual.clear');
+        this.splitSelection = [];
+        this.splitAreas = null;
     }
 
     clear() {
@@ -148,6 +163,37 @@ class AreaMeasurementTool {
         this.clicksDisabled = true;
         this.lastButtonClickTime = Date.now();
         setTimeout(() => (this.clicksDisabled = false), 300);
+    }
+
+    // --- Split UI management ---
+    private startSplit() {
+        if (this.state === AreaState.INACTIVE) return;
+        this.splitSelection = [];
+        this.splitAreas = null;
+        this.state = AreaState.SPLIT_SELECT;
+        this.publish();
+    }
+
+    private cancelSplit() {
+        if (this.state === AreaState.SPLIT_SELECT) {
+            this.state = AreaState.ACTIVE;
+        }
+        this.splitSelection = [];
+        this.splitAreas = null;
+        this.publish();
+    }
+
+    private pickSplitIndex(index: number) {
+        if (this.state !== AreaState.SPLIT_SELECT) return;
+        if (index < 0 || index >= this.points.length) return;
+        if (!this.splitSelection.includes(index)) this.splitSelection.push(index);
+        if (this.splitSelection.length > 2) this.splitSelection.shift();
+        if (this.splitSelection.length === 2) {
+            const [i, j] = this.splitSelection;
+            const res = this.computeSplitAreas(i, j);
+            if (res) this.splitAreas = res;
+        }
+        this.publish();
     }
 
     private onPointerDown(e: PointerEvent) {
@@ -374,6 +420,93 @@ class AreaMeasurementTool {
         return area > EPS ? area : null;
     }
 
+    // Compute area for an arbitrary 3D polygon point list (assumes closed and simple)
+    private areaOfPolygon(pts: Vec3[]): number {
+        // Duplicate the triangulation logic but without reading this.points
+        const n = pts.length;
+        if (n < 3) return 0;
+        const triArea3D = (a: Vec3, b: Vec3, c: Vec3) => {
+            const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+            const vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+            const cx = uy * vz - uz * vy;
+            const cy = uz * vx - ux * vz;
+            const cz = ux * vy - uy * vx;
+            return 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
+        };
+        if (n === 3) return triArea3D(pts[0], pts[1], pts[2]);
+
+        // Newell normal
+        let nx = 0, ny = 0, nz = 0;
+        for (let i = 0; i < n; i++) {
+            const p = pts[i];
+            const q = pts[(i + 1) % n];
+            nx += (p.y - q.y) * (p.z + q.z);
+            ny += (p.z - q.z) * (p.x + q.x);
+            nz += (p.x - q.x) * (p.y + q.y);
+        }
+        let dropAxis: 0 | 1 | 2 = 2;
+        const anx = Math.abs(nx), any = Math.abs(ny), anz = Math.abs(nz);
+        if (anx >= any && anx >= anz) dropAxis = 0; else if (any >= anx && any >= anz) dropAxis = 1; else dropAxis = 2;
+        type V2 = { x: number; y: number };
+        const to2 = (p: Vec3): V2 => (dropAxis === 0 ? { x: p.y, y: p.z } : dropAxis === 1 ? { x: p.x, y: p.z } : { x: p.x, y: p.y });
+        const poly2: V2[] = pts.map(to2);
+        const orient = () => {
+            let a = 0; for (let i = 0; i < poly2.length; i++) { const p = poly2[i]; const q = poly2[(i + 1) % poly2.length]; a += p.x * q.y - q.x * p.y; }
+            return Math.sign(a) || 1;
+        };
+        const orientation = orient();
+        const isConvex = (a: V2, b: V2, c: V2) => { const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); return orientation > 0 ? cross > 0 : cross < 0; };
+        const insideTri = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, px: number, py: number) => {
+            const abx = bx - ax, aby = by - ay; const bcx = cx - bx, bcy = cy - by; const cax = ax - cx, cay = ay - cy;
+            const apx = px - ax, apy = py - ay; const bpx = px - bx, bpy = py - by; const cpx = px - cx, cpy = py - cy;
+            const c1 = abx * apy - aby * apx; const c2 = bcx * bpy - bcy * bpx; const c3 = cax * cpy - cay * cpx; return orientation > 0 ? (c1 >= 0 && c2 >= 0 && c3 >= 0) : (c1 <= 0 && c2 <= 0 && c3 <= 0);
+        };
+        const indices = Array.from({ length: poly2.length }, (_, i) => i);
+        const triangles: [number, number, number][] = [];
+        let guard = 0;
+        while (indices.length > 3 && guard++ < 10000) {
+            let earFound = false;
+            for (let i = 0; i < indices.length; i++) {
+                const i0 = indices[(i + indices.length - 1) % indices.length]; const i1 = indices[i]; const i2 = indices[(i + 1) % indices.length];
+                const a = poly2[i0], b = poly2[i1], c = poly2[i2]; if (!isConvex(a, b, c)) continue;
+                let contains = false; for (let j = 0; j < indices.length; j++) { const k = indices[j]; if (k === i0 || k === i1 || k === i2) continue; const p = poly2[k]; if (insideTri(a.x, a.y, b.x, b.y, c.x, c.y, p.x, p.y)) { contains = true; break; } }
+                if (contains) continue; triangles.push([i0, i1, i2]); indices.splice(i, 1); earFound = true; break;
+            }
+            if (!earFound) break;
+        }
+        if (indices.length === 3) triangles.push([indices[0], indices[1], indices[2]]);
+        let area = 0; for (const [a, b, c] of triangles) { area += triArea3D(pts[a], pts[b], pts[c]); }
+        return area;
+    }
+
+    private computePlanarity(): { rms: number; max: number } | null {
+        if (this.points.length < 3) return null;
+        // Newell normal
+        let nx = 0, ny = 0, nz = 0; const n = this.points.length;
+        for (let i = 0; i < n; i++) { const p = this.points[i]; const q = this.points[(i + 1) % n]; nx += (p.y - q.y) * (p.z + q.z); ny += (p.z - q.z) * (p.x + q.x); nz += (p.x - q.x) * (p.y + q.y); }
+        const len = Math.sqrt(nx * nx + ny * ny + nz * nz); if (len < EPS) return { rms: 0, max: 0 };
+        nx /= len; ny /= len; nz /= len;
+        const p0 = this.points[0];
+        let sum2 = 0, max = 0;
+        for (const p of this.points) {
+            const dx = p.x - p0.x, dy = p.y - p0.y, dz = p.z - p0.z;
+            const d = Math.abs(nx * dx + ny * dy + nz * dz);
+            sum2 += d * d; if (d > max) max = d;
+        }
+        return { rms: Math.sqrt(sum2 / n), max };
+    }
+
+    private computeSplitAreas(i: number, j: number): { a: number; b: number; total: number } | null {
+        if (i === j) return null; if (this.points.length < 3) return null;
+        const aIdx = Math.min(i, j), bIdx = Math.max(i, j);
+        const poly1 = this.points.slice(aIdx, bIdx + 1);
+        const poly2 = this.points.slice(bIdx).concat(this.points.slice(0, aIdx + 1));
+        if (poly1.length < 3 || poly2.length < 3) return null;
+        const area1 = this.areaOfPolygon(poly1);
+        const area2 = this.areaOfPolygon(poly2);
+        return { a: area1, b: area2, total: area1 + area2 };
+    }
+
     private closePolygon() {
         if (this.points.length >= 3) {
             this.closed = true;
@@ -387,7 +520,10 @@ class AreaMeasurementTool {
             edges: this.buildEdges(),
             closed: this.closed,
             area: this.computeArea(),
-            redoIndex: this.state === AreaState.WAITING_REDO ? this.redoIndex : null
+            redoIndex: this.state === AreaState.WAITING_REDO ? this.redoIndex : null,
+            nonPlanarity: this.closed ? this.computePlanarity() : null,
+            splitSelection: this.splitSelection.length ? this.splitSelection.slice() : null,
+            splitAreas: this.splitAreas
         };
         this.events.fire('area.measure.updated', data);
         this.events.fire('area.measure.visual.update', data);

@@ -169,7 +169,20 @@ class AreaMeasurementPanel extends Panel {
 
     toggle() { this.visible ? this.hide() : this.show(); }
     show() { if (!this.visible) { this.visible = true; this.dom.style.display = 'block'; this.updateSplitButtons(); } }
-    hide() { if (this.visible) { this.visible = false; this.dom.style.display = 'none'; } }
+    hide() {
+        if (this.visible) {
+            this.visible = false;
+            this.dom.style.display = 'none';
+            // reset split UI state and notify tool to cancel any split selection
+            if (this.splitMode) {
+                this.splitMode = false;
+                this.updateSplitButtons();
+            }
+            this.splitResultLabel.text = '';
+            this.planarityLabel.text = '';
+            this.events.fire('area.measure.split.cancel');
+        }
+    }
 }
 
 export { AreaMeasurementPanel };
