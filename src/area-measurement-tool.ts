@@ -13,6 +13,7 @@ export type AreaMeasurementData = {
     nonPlanarity: { rms: number; max: number } | null;
     splitSelection: number[] | null;
     splitAreas: { a: number; b: number; total: number } | null;
+    ridges: { i: number; j: number; a: number; b: number; total: number }[];
 };
 
 enum AreaState {
@@ -38,6 +39,7 @@ class AreaMeasurementTool {
     private redoIndex: number | null = null;
     private splitSelection: number[] = [];
     private splitAreas: { a: number; b: number; total: number } | null = null;
+    private ridges: { i: number; j: number; a: number; b: number; total: number }[] = [];
 
     private clicksDisabled = false;
     private lastButtonClickTime = 0;
@@ -70,6 +72,9 @@ class AreaMeasurementTool {
         this.events.on('area.measure.split.start', () => this.startSplit());
         this.events.on('area.measure.split.cancel', () => this.cancelSplit());
         this.events.on('area.measure.split.select', (index: number) => this.pickSplitIndex(index));
+        this.events.on('area.measure.split.add', () => this.addRidgeFromSelection());
+        this.events.on('area.measure.split.undo', () => this.undoLastRidge());
+        this.events.on('area.measure.split.clearAll', () => this.clearAllRidges());
     }
 
     toggle() {
@@ -89,6 +94,7 @@ class AreaMeasurementTool {
         this.redoIndex = null;
         this.splitSelection = [];
         this.splitAreas = null;
+        this.ridges = [];
         // ensure any previous split mode in UI is cancelled
         this.events.fire('area.measure.split.cancel');
 
@@ -139,6 +145,7 @@ class AreaMeasurementTool {
         this.events.fire('area.measure.visual.clear');
         this.splitSelection = [];
         this.splitAreas = null;
+        this.ridges = [];
     }
 
     clear() {
@@ -185,6 +192,32 @@ class AreaMeasurementTool {
         this.splitSelection = [];
         this.splitAreas = null;
         this.publish();
+    }
+
+    private addRidgeFromSelection() {
+        if (!this.splitAreas || this.splitSelection.length !== 2) return;
+        const [i, j] = this.splitSelection.slice().sort((a, b) => a - b);
+        const { a, b: bb, total } = this.splitAreas;
+        this.ridges.push({ i, j, a, b: bb, total });
+        // reset selection for next ridge
+        this.splitSelection = [];
+        this.splitAreas = null;
+        this.state = AreaState.ACTIVE;
+        this.publish();
+    }
+
+    private undoLastRidge() {
+        if (this.ridges.length > 0) {
+            this.ridges.pop();
+            this.publish();
+        }
+    }
+
+    private clearAllRidges() {
+        if (this.ridges.length > 0) {
+            this.ridges = [];
+            this.publish();
+        }
     }
 
     private pickSplitIndex(index: number) {
@@ -527,7 +560,8 @@ class AreaMeasurementTool {
             redoIndex: this.state === AreaState.WAITING_REDO ? this.redoIndex : null,
             nonPlanarity: this.closed ? this.computePlanarity() : null,
             splitSelection: this.splitSelection.length ? this.splitSelection.slice() : null,
-            splitAreas: this.splitAreas
+            splitAreas: this.splitAreas,
+            ridges: this.ridges.slice()
         };
         this.events.fire('area.measure.updated', data);
         this.events.fire('area.measure.visual.update', data);

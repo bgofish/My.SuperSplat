@@ -11,6 +11,7 @@ class AreaMeasurementPanel extends Panel {
     private areaLabel: Label;
     private planarityLabel: Label;
     private splitResultLabel: Label;
+    private ridgesContainer: Container;
     private clearBtn: Button;
     private closeBtn: Button;
     private exitBtn: Button;
@@ -35,6 +36,7 @@ class AreaMeasurementPanel extends Panel {
         this.planarityLabel = new Label({ text: '', class: 'measurement-value' });
         this.splitResultLabel = new Label({ text: '', class: 'measurement-value' });
         this.clearBtn = new Button({ text: 'Clear', size: 'small' });
+        this.ridgesContainer = new Container({ class: 'area-ridges' });
         this.closeBtn = new Button({ text: 'Close Polygon', size: 'small' });
         this.exitBtn = new Button({ text: 'Close', size: 'small' });
         this.splitBtn = new Button({ text: 'Split Along Ridge', size: 'small' });
@@ -74,6 +76,18 @@ class AreaMeasurementPanel extends Panel {
 
         const instructions = new Label({ text: 'Click to add points. Press "Connect" to close the polygon.', class: 'measurement-instructions' });
 
+        const ridgeButtons = new Container({ class: 'measurement-buttons' });
+        const addRidgeBtn = new Button({ text: 'Add Ridge', size: 'small' });
+        const undoRidgeBtn = new Button({ text: 'Undo Ridge', size: 'small' });
+        const clearRidgesBtn = new Button({ text: 'Clear Ridges', size: 'small' });
+        const bindR = (b: Button, ev: string) => b.on('click', () => { this.events.fire('area.measure.disable.temporary'); this.events.fire(ev); });
+        bindR(addRidgeBtn, 'area.measure.split.add');
+        bindR(undoRidgeBtn, 'area.measure.split.undo');
+        bindR(clearRidgesBtn, 'area.measure.split.clearAll');
+        ridgeButtons.append(addRidgeBtn);
+        ridgeButtons.append(undoRidgeBtn);
+        ridgeButtons.append(clearRidgesBtn);
+
         const buttons = new Container({ class: 'measurement-buttons' });
         buttons.append(this.clearBtn);
         buttons.append(this.closeBtn);
@@ -87,6 +101,8 @@ class AreaMeasurementPanel extends Panel {
         this.append(this.areaLabel);
         this.append(this.planarityLabel);
         this.append(this.splitResultLabel);
+        this.append(this.ridgesContainer);
+        this.append(ridgeButtons);
         this.append(buttons);
 
         this.dom.style.display = 'none';
@@ -157,6 +173,15 @@ class AreaMeasurementPanel extends Panel {
             this.planarityLabel.text = `Planarity OK (max ${data.nonPlanarity.max.toFixed(3)})`;
         } else {
             this.planarityLabel.text = '';
+        }
+
+        // ridges list
+        this.ridgesContainer.clear();
+        if (data.ridges && data.ridges.length) {
+            data.ridges.forEach((r, idx) => {
+                const lbl = new Label({ text: `R${idx + 1}: P${r.i + 1} ↔ P${r.j + 1} = ${r.a.toFixed(3)} + ${r.b.toFixed(3)} = ${r.total.toFixed(3)}`, class: 'measurement-value' });
+                this.ridgesContainer.append(lbl);
+            });
         }
 
         // split results

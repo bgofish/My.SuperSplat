@@ -180,7 +180,26 @@ class AreaMeasurementVisual {
             this.drawLabel(p.x, p.y - this.indexLabelOffset, `P${i + 1}`, color);
         });
 
-        // if two split points are selected, draw a dashed seam between them
+        // draw saved ridges first (lighter dash)
+        if (this.data.ridges && this.data.ridges.length) {
+            const ctx = this.ctx;
+            ctx.save();
+            ctx.setLineDash([6, 6]);
+            ctx.strokeStyle = 'rgba(0, 209, 255, 0.6)';
+            ctx.lineWidth = 1.5;
+            for (const r of this.data.ridges) {
+                const a = pts[r.i];
+                const b = pts[r.j];
+                if (!a || !b) continue;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // if two split points are selected, draw a dashed seam between them (highlight)
         if (selected.size === 2) {
             const ids = Array.from(selected.values()).sort((a, b) => a - b);
             const a = pts[ids[0]];
