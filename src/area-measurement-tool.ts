@@ -256,19 +256,29 @@ class AreaMeasurementTool {
         const pts: Vec3[] = [];
         for (let i = 0; i < this.points.length; i++) {
             const p = this.points[i];
-            if (i === 0 || p.clone().sub(this.points[i - 1]).length() > EPS) {
+            const prev = i > 0 ? this.points[i - 1] : null;
+            if (!prev || ((p.x - prev.x) ** 2 + (p.y - prev.y) ** 2 + (p.z - prev.z) ** 2) > EPS * EPS) {
                 pts.push(p);
             }
         }
         const n = pts.length;
         if (!this.closed || n < 3) return null;
+
+        // Helper to triangle area in 3D without allocating vectors
+        const triArea3D = (a: Vec3, b: Vec3, c: Vec3) => {
+            const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+            const vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+            const cx = uy * vz - uz * vy;
+            const cy = uz * vx - ux * vz;
+            const cz = ux * vy - uy * vx;
+            return 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
+        };
+
         if (n === 3) {
-            const a = pts[0].clone();
-            const b = pts[1].clone().sub(a);
-            const c = pts[2].clone().sub(a);
-            return 0.5 * b.cross(c).length();
+            return triArea3D(pts[0], pts[1], pts[2]);
         }
-        // Newell’s method for general simple polygon in 3D (best-fit plane for near-coplanar)
+
+        // Newell normal (used for robust 2D projection and planarity check)
         let nx = 0, ny = 0, nz = 0;
         for (let i = 0; i < n; i++) {
             const p = pts[i];
@@ -277,8 +287,91 @@ class AreaMeasurementTool {
             ny += (p.z - q.z) * (p.x + q.x);
             nz += (p.x - q.x) * (p.y + q.y);
         }
-        const areaVectorLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
-        return areaVectorLen * 0.5;
+        const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+
+        // Project to the dominant axis plane for robust triangulation
+        // Choose which axis to drop based on the largest normal component
+        let dropAxis: 0 | 1 | 2 = 2; // default drop Z -> use XY
+        const anx = Math.abs(nx), any = Math.abs(ny), anz = Math.abs(nz);
+        if (anx >= any && anx >= anz) dropAxis = 0; // drop X -> use YZ
+        else if (any >= anx && any >= anz) dropAxis = 1; // drop Y -> use XZ
+        else dropAxis = 2; // drop Z -> use XY
+
+        type V2 = { x: number; y: number };
+        const to2 = (p: Vec3): V2 => {
+            if (dropAxis === 0) return { x: p.y, y: p.z };
+            if (dropAxis === 1) return { x: p.x, y: p.z };
+            return { x: p.x, y: p.y };
+        };
+        const poly2: V2[] = pts.map(to2);
+
+        // Ear clipping in 2D to triangulate the simple polygon (no holes)
+        const orient = () => {
+            let a = 0;
+            for (let i = 0; i < poly2.length; i++) {
+                const p = poly2[i];
+                const q = poly2[(i + 1) % poly2.length];
+                a += p.x * q.y - q.x * p.y;
+            }
+            return Math.sign(a); // +1 CCW, -1 CW, 0 degenerate
+        };
+        const orientation = orient() || 1;
+
+        const insideTri = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, px: number, py: number) => {
+            const abx = bx - ax, aby = by - ay;
+            const bcx = cx - bx, bcy = cy - by;
+            const cax = ax - cx, cay = ay - cy;
+            const apx = px - ax, apy = py - ay;
+            const bpx = px - bx, bpy = py - by;
+            const cpx = px - cx, cpy = py - cy;
+            const c1 = abx * apy - aby * apx;
+            const c2 = bcx * bpy - bcy * bpx;
+            const c3 = cax * cpy - cay * cpx;
+            if (orientation > 0) return c1 >= 0 && c2 >= 0 && c3 >= 0;
+            return c1 <= 0 && c2 <= 0 && c3 <= 0;
+        };
+
+        const isConvex = (a: V2, b: V2, c: V2) => {
+            const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+            return orientation > 0 ? cross > 0 : cross < 0;
+        };
+
+        const indices = Array.from({ length: poly2.length }, (_, i) => i);
+        const triangles: [number, number, number][] = [];
+        let guard = 0;
+        while (indices.length > 3 && guard++ < 10000) {
+            let earFound = false;
+            for (let i = 0; i < indices.length; i++) {
+                const i0 = indices[(i + indices.length - 1) % indices.length];
+                const i1 = indices[i];
+                const i2 = indices[(i + 1) % indices.length];
+                const a = poly2[i0], b = poly2[i1], c = poly2[i2];
+                if (!isConvex(a, b, c)) continue;
+                // Check no other point inside triangle
+                let contains = false;
+                for (let j = 0; j < indices.length; j++) {
+                    const k = indices[j];
+                    if (k === i0 || k === i1 || k === i2) continue;
+                    const p = poly2[k];
+                    if (insideTri(a.x, a.y, b.x, b.y, c.x, c.y, p.x, p.y)) { contains = true; break; }
+                }
+                if (contains) continue;
+                // Clip ear
+                triangles.push([i0, i1, i2]);
+                indices.splice(i, 1);
+                earFound = true;
+                break;
+            }
+            if (!earFound) break; // degenerate / self-intersection
+        }
+        if (indices.length === 3) triangles.push([indices[0], indices[1], indices[2]]);
+
+        // Sum triangle areas using original 3D coordinates
+        let area = 0;
+        for (const [a, b, c] of triangles) {
+            area += triArea3D(pts[a], pts[b], pts[c]);
+        }
+        return area > EPS ? area : null;
     }
 
     private closePolygon() {
