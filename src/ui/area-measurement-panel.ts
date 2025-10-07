@@ -112,6 +112,9 @@ class AreaMeasurementPanel extends Panel {
         buttons.append(this.exitBtn);
 
         this.append(instructions);
+        // prevent panel clicks from reaching canvas
+        (this.dom as HTMLElement).addEventListener('pointerdown', (e) => { e.stopPropagation(); }, true);
+        (this.dom as HTMLElement).addEventListener('click', (e) => { e.stopPropagation(); }, true);
         this.append(this.pointsContainer);
         this.append(this.edgesContainer);
         this.append(this.areaLabel);
@@ -126,7 +129,7 @@ class AreaMeasurementPanel extends Panel {
         this.events.on('area.measure.updated', (data: AreaMeasurementData) => this.update(data));
         this.events.on('area.measure.show', () => this.show());
         this.events.on('area.measure.hide', () => this.hide());
-        this.events.on('area.measure.toggle', () => this.toggle());
+        this.events.on('area.measure.show', () => this.show());
         // keep a copy of last data to force immediate re-render when toggling
         this.events.on('area.measure.updated', (d: AreaMeasurementData) => { this.lastData = d; });
         // keep UI split mode in sync if tool cancels split (e.g., after clear)
