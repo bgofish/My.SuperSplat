@@ -112,9 +112,10 @@ class AreaMeasurementPanel extends Panel {
         buttons.append(this.exitBtn);
 
         this.append(instructions);
-        // prevent panel clicks from reaching canvas
-        (this.dom as HTMLElement).addEventListener('pointerdown', (e) => { e.stopPropagation(); }, true);
-        (this.dom as HTMLElement).addEventListener('click', (e) => { e.stopPropagation(); }, true);
+        // prevent panel clicks from reaching canvas without blocking child controls
+        // use non-capturing listeners so target (buttons) still receive the event
+        (this.dom as HTMLElement).addEventListener('pointerdown', (e) => { e.stopPropagation(); }, false);
+        (this.dom as HTMLElement).addEventListener('click', (e) => { e.stopPropagation(); }, false);
         this.append(this.pointsContainer);
         this.append(this.edgesContainer);
         this.append(this.areaLabel);
