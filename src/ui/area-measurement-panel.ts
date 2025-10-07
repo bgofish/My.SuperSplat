@@ -9,10 +9,15 @@ class AreaMeasurementPanel extends Panel {
     private pointsContainer: Container;
     private edgesContainer: Container;
     private areaLabel: Label;
+    private planarityLabel: Label;
+    private splitResultLabel: Label;
     private clearBtn: Button;
     private closeBtn: Button;
     private exitBtn: Button;
+    private splitBtn: Button;
+    private cancelSplitBtn: Button;
     private visible = false;
+    private splitMode = false;
 
     constructor(events: Events) {
         super({
@@ -27,9 +32,13 @@ class AreaMeasurementPanel extends Panel {
         this.pointsContainer = new Container({ class: 'area-points-container' });
         this.edgesContainer = new Container({ class: 'area-edges-container' });
         this.areaLabel = new Label({ text: 'Area: ---', class: 'measurement-value' });
+        this.planarityLabel = new Label({ text: '', class: 'measurement-value' });
+        this.splitResultLabel = new Label({ text: '', class: 'measurement-value' });
         this.clearBtn = new Button({ text: 'Clear', size: 'small' });
         this.closeBtn = new Button({ text: 'Close Polygon', size: 'small' });
         this.exitBtn = new Button({ text: 'Close', size: 'small' });
+        this.splitBtn = new Button({ text: 'Split Along Ridge', size: 'small' });
+        this.cancelSplitBtn = new Button({ text: 'Cancel Split', size: 'small' });
 
         // Bind actions robustly (both PCUI and raw DOM)
         const bindBtn = (btn: Button, action: () => void) => {
@@ -41,18 +50,34 @@ class AreaMeasurementPanel extends Panel {
         bindBtn(this.clearBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.clear'); });
         bindBtn(this.closeBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.closePolygon'); });
         bindBtn(this.exitBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.exit'); });
+        bindBtn(this.splitBtn, () => {
+            this.events.fire('area.measure.disable.temporary');
+            this.splitMode = true;
+            this.events.fire('area.measure.split.start');
+            this.updateSplitButtons();
+        });
+        bindBtn(this.cancelSplitBtn, () => {
+            this.events.fire('area.measure.disable.temporary');
+            this.splitMode = false;
+            this.events.fire('area.measure.split.cancel');
+            this.updateSplitButtons();
+        });
 
         const instructions = new Label({ text: 'Click to add points. Press "Connect" to close the polygon.', class: 'measurement-instructions' });
 
         const buttons = new Container({ class: 'measurement-buttons' });
         buttons.append(this.clearBtn);
         buttons.append(this.closeBtn);
+        buttons.append(this.splitBtn);
+        buttons.append(this.cancelSplitBtn);
         buttons.append(this.exitBtn);
 
         this.append(instructions);
         this.append(this.pointsContainer);
         this.append(this.edgesContainer);
         this.append(this.areaLabel);
+        this.append(this.planarityLabel);
+        this.append(this.splitResultLabel);
         this.append(buttons);
 
         this.dom.style.display = 'none';
@@ -67,15 +92,25 @@ class AreaMeasurementPanel extends Panel {
         const row = new Container({ class: 'measurement-row' });
         const label = new Label({ text: `P${idx + 1}: ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}`, class: 'measurement-value' });
         const redo = new Button({ text: 'Redo', size: 'small' });
+        const pick = new Button({ text: 'Pick', size: 'small' });
         const doRedo = () => {
             this.events.fire('area.measure.disable.temporary');
             this.events.fire('area.measure.redo', idx);
         };
+        const doPick = () => {
+            if (!this.splitMode) return;
+            this.events.fire('area.measure.disable.temporary');
+            this.events.fire('area.measure.split.select', idx);
+        };
         redo.on('click', doRedo);
+        pick.on('click', doPick);
         redo.dom.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); doRedo(); }, true);
+        pick.dom.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); doPick(); }, true);
         redo.dom.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        pick.dom.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
         row.append(label);
         row.append(redo);
+        if (this.splitMode) row.append(pick);
         return row;
     }
 
@@ -97,10 +132,43 @@ class AreaMeasurementPanel extends Panel {
         } else {
             this.areaLabel.text = 'Area: ---';
         }
+
+        // planarity
+        if (data.nonPlanarity && (data.nonPlanarity.max > 0.2)) {
+            this.planarityLabel.text = `Non-planar: max ${data.nonPlanarity.max.toFixed(3)}, rms ${data.nonPlanarity.rms.toFixed(3)}`;
+        } else if (data.nonPlanarity) {
+            this.planarityLabel.text = `Planarity OK (max ${data.nonPlanarity.max.toFixed(3)})`;
+        } else {
+            this.planarityLabel.text = '';
+        }
+
+        // split results
+        if (data.splitAreas) {
+            this.splitResultLabel.text = `Split areas: ${data.splitAreas.a.toFixed(3)} + ${data.splitAreas.b.toFixed(3)} = ${data.splitAreas.total.toFixed(3)}`;
+            // leave split mode once we have results
+            this.splitMode = false;
+            this.updateSplitButtons();
+        } else if (this.splitMode) {
+            const sel = data.splitSelection || [];
+            if (sel.length === 1) this.splitResultLabel.text = `Pick second point (selected P${sel[0] + 1})...`;
+            else this.splitResultLabel.text = 'Pick two points to split the polygon...';
+        } else {
+            this.splitResultLabel.text = '';
+        }
+    }
+
+    private updateSplitButtons() {
+        if (this.splitMode) {
+            this.splitBtn.dom.style.display = 'none';
+            this.cancelSplitBtn.dom.style.display = 'inline-block';
+        } else {
+            this.splitBtn.dom.style.display = 'inline-block';
+            this.cancelSplitBtn.dom.style.display = 'none';
+        }
     }
 
     toggle() { this.visible ? this.hide() : this.show(); }
-    show() { if (!this.visible) { this.visible = true; this.dom.style.display = 'block'; } }
+    show() { if (!this.visible) { this.visible = true; this.dom.style.display = 'block'; this.updateSplitButtons(); } }
     hide() { if (this.visible) { this.visible = false; this.dom.style.display = 'none'; } }
 }
 
