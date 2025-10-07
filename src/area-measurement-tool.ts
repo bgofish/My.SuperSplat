@@ -13,7 +13,9 @@ export type AreaMeasurementData = {
     nonPlanarity: { rms: number; max: number } | null;
     splitSelection: number[] | null;
     splitAreas: { a: number; b: number; total: number } | null;
-    ridges: { i: number; j: number; a: number; b: number; total: number }[];
+    ridges: { i: number; j: number }[];
+    surfaces: { indices: number[]; area: number }[] | null;
+    surfacesTotal: number | null;
 };
 
 enum AreaState {
@@ -39,7 +41,7 @@ class AreaMeasurementTool {
     private redoIndex: number | null = null;
     private splitSelection: number[] = [];
     private splitAreas: { a: number; b: number; total: number } | null = null;
-    private ridges: { i: number; j: number; a: number; b: number; total: number }[] = [];
+    private ridges: { i: number; j: number }[] = [];
 
     private clicksDisabled = false;
     private lastButtonClickTime = 0;
@@ -197,8 +199,8 @@ class AreaMeasurementTool {
     private addRidgeFromSelection() {
         if (!this.splitAreas || this.splitSelection.length !== 2) return;
         const [i, j] = this.splitSelection.slice().sort((a, b) => a - b);
-        const { a, b: bb, total } = this.splitAreas;
-        this.ridges.push({ i, j, a, b: bb, total });
+        // store just endpoints; areas will be recomputed for all ridges on publish
+        this.ridges.push({ i, j });
         // reset selection for next ridge
         this.splitSelection = [];
         this.splitAreas = null;
@@ -218,6 +220,48 @@ class AreaMeasurementTool {
             this.ridges = [];
             this.publish();
         }
+    }
+
+    private computeSurfacesFromRidges(): { indices: number[]; area: number }[] | null {
+        if (!this.closed || this.points.length < 3) return null;
+        if (this.ridges.length === 0) return null;
+        // start with the full polygon indices
+        let polys: number[][] = [Array.from({ length: this.points.length }, (_, i) => i)];
+        const splitSeq = (seq: number[], i: number, j: number): [number[], number[]] | null => {
+            const pi = seq.indexOf(i);
+            const pj = seq.indexOf(j);
+            if (pi === -1 || pj === -1) return null;
+            if (pi <= pj) {
+                const a = seq.slice(pi, pj + 1);
+                const b = seq.slice(pj).concat(seq.slice(0, pi + 1));
+                return [a, b];
+            } else {
+                const a = seq.slice(pj, pi + 1);
+                const b = seq.slice(pi).concat(seq.slice(0, pj + 1));
+                return [a, b];
+            }
+        };
+        for (const r of this.ridges) {
+            let replaced = false;
+            for (let p = 0; p < polys.length; p++) {
+                const split = splitSeq(polys[p], r.i, r.j);
+                if (split) {
+                    polys.splice(p, 1, split[0], split[1]);
+                    replaced = true;
+                    break;
+                }
+            }
+            // if not found, ridge might be redundant (already split); continue
+        }
+        // compute areas for each poly
+        const result: { indices: number[]; area: number }[] = [];
+        for (const seq of polys) {
+            if (seq.length < 3) continue;
+            const pts = seq.map(i => this.points[i]);
+            const a = this.areaOfPolygon(pts);
+            result.push({ indices: seq.slice(), area: a });
+        }
+        return result;
     }
 
     private pickSplitIndex(index: number) {
@@ -552,6 +596,8 @@ class AreaMeasurementTool {
     }
 
     private publish() {
+        const surfaces = this.computeSurfacesFromRidges();
+        const totalSurfaces = surfaces ? surfaces.reduce((s, f) => s + f.area, 0) : null;
         const data: AreaMeasurementData = {
             points: this.points.slice(),
             edges: this.buildEdges(),
@@ -561,7 +607,9 @@ class AreaMeasurementTool {
             nonPlanarity: this.closed ? this.computePlanarity() : null,
             splitSelection: this.splitSelection.length ? this.splitSelection.slice() : null,
             splitAreas: this.splitAreas,
-            ridges: this.ridges.slice()
+            ridges: this.ridges.slice(),
+            surfaces: surfaces,
+            surfacesTotal: totalSurfaces
         };
         this.events.fire('area.measure.updated', data);
         this.events.fire('area.measure.visual.update', data);

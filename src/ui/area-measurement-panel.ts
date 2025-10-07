@@ -179,9 +179,19 @@ class AreaMeasurementPanel extends Panel {
         this.ridgesContainer.clear();
         if (data.ridges && data.ridges.length) {
             data.ridges.forEach((r, idx) => {
-                const lbl = new Label({ text: `R${idx + 1}: P${r.i + 1} ↔ P${r.j + 1} = ${r.a.toFixed(3)} + ${r.b.toFixed(3)} = ${r.total.toFixed(3)}`, class: 'measurement-value' });
+                const lbl = new Label({ text: `R${idx + 1}: P${r.i + 1} ↔ P${r.j + 1}` , class: 'measurement-value' });
                 this.ridgesContainer.append(lbl);
             });
+        }
+        if (data.surfaces && data.surfaces.length) {
+            data.surfaces.forEach((s, idx) => {
+                const lbl = new Label({ text: `S${idx + 1}: ${s.area.toFixed(3)} (indices ${s.indices.map(i=>`P${i+1}`).join('→')})`, class: 'measurement-value' });
+                this.ridgesContainer.append(lbl);
+            });
+            if (data.surfacesTotal !== null) {
+                const sumLbl = new Label({ text: `Surfaces total: ${data.surfacesTotal.toFixed(3)}`, class: 'measurement-value' });
+                this.ridgesContainer.append(sumLbl);
+            }
         }
 
         // split results
