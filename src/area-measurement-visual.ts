@@ -175,8 +175,9 @@ class AreaMeasurementVisual {
         });
         // draw point indices near points for easier selection (highlight if in splitSelection)
         const selected = new Set((this.data.splitSelection ?? []).map(i => i));
+        const used = new Set((this.data.ridges ?? []).flatMap(r => [r.i, r.j]));
         pts.forEach((p, i) => {
-            const color = selected.has(i) ? this.indexSelectedColor : this.indexColor;
+            const color = selected.has(i) ? this.indexSelectedColor : (used.has(i) ? '#66b3ff' : this.indexColor);
             this.drawLabel(p.x, p.y - this.indexLabelOffset, `P${i + 1}`, color);
         });
 

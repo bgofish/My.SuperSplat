@@ -121,7 +121,7 @@ class AreaMeasurementPanel extends Panel {
         });
     }
 
-    private makePointRow(idx: number, p: Vec3) {
+    private makePointRow(idx: number, p: Vec3, used: Set<number>, selected: Set<number>) {
         const row = new Container({ class: 'measurement-row' });
         const label = new Label({ text: `P${idx + 1}: ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}`, class: 'measurement-value' });
         const redo = new Button({ text: 'Redo', size: 'small' });
@@ -137,6 +137,10 @@ class AreaMeasurementPanel extends Panel {
         };
         redo.on('click', doRedo);
         pick.on('click', doPick);
+        // color-code Pick button: selected -> yellow, used in ridge -> cyan
+        if (selected.has(idx)) pick.dom.style.background = '#ffd400';
+        else if (used.has(idx)) pick.dom.style.background = '#00bcd4';
+        pick.dom.style.color = '#000';
         redo.dom.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); doRedo(); }, true);
         pick.dom.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); doPick(); }, true);
         redo.dom.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
@@ -150,7 +154,9 @@ class AreaMeasurementPanel extends Panel {
     private update(data: AreaMeasurementData) {
         // points
         this.pointsContainer.clear();
-        data.points.forEach((p, i) => this.pointsContainer.append(this.makePointRow(i, p)));
+        const used = new Set((data.ridges ?? []).flatMap(r => [r.i, r.j]));
+        const selected = new Set((data.splitSelection ?? []));
+        data.points.forEach((p, i) => this.pointsContainer.append(this.makePointRow(i, p, used, selected)));
 
         // edges (render as simple labels without boxed container)
         this.edgesContainer.clear();

@@ -267,8 +267,17 @@ class AreaMeasurementTool {
     private pickSplitIndex(index: number) {
         if (this.state !== AreaState.SPLIT_SELECT) return;
         if (index < 0 || index >= this.points.length) return;
+        // If two picks already exist, auto-add that ridge before starting a new pair
+        if (this.splitSelection.length === 2) {
+            const [a, b] = this.splitSelection.slice().sort((x, y) => x - y);
+            // avoid duplicates
+            if (!this.ridges.some(r => (r.i === a && r.j === b) || (r.i === b && r.j === a))) {
+                this.ridges.push({ i: a, j: b });
+            }
+            this.splitSelection = [];
+            this.splitAreas = null;
+        }
         if (!this.splitSelection.includes(index)) this.splitSelection.push(index);
-        if (this.splitSelection.length > 2) this.splitSelection.shift();
         if (this.splitSelection.length === 2) {
             const [i, j] = this.splitSelection;
             const res = this.computeSplitAreas(i, j);
