@@ -13,6 +13,12 @@ class AreaMeasurementVisual {
     private data: AreaMeasurementData | null = null;
     private raf: number | null = null;
 
+    // configurable visual options
+    private indexLabelOffset = 12; // pixels above the point dot
+    private indexLabelFontPx = 12; // font size
+    private indexColor = '#00d1ff';
+    private indexSelectedColor = '#ffd400';
+
     constructor(events: Events, scene: Scene, canvas: HTMLCanvasElement) {
         this.events = events;
         this.scene = scene;
@@ -38,6 +44,14 @@ class AreaMeasurementVisual {
             this.data = null;
             this.stop();
             this.clear();
+        });
+
+        // allow runtime configuration tweaks
+        this.events.on('area.measure.visual.config', (cfg: any) => {
+            if (cfg?.indexLabelOffset !== undefined) this.indexLabelOffset = cfg.indexLabelOffset;
+            if (cfg?.indexLabelFontPx !== undefined) this.indexLabelFontPx = cfg.indexLabelFontPx;
+            if (cfg?.indexColor) this.indexColor = cfg.indexColor;
+            if (cfg?.indexSelectedColor) this.indexSelectedColor = cfg.indexSelectedColor;
         });
     }
 
@@ -103,10 +117,10 @@ class AreaMeasurementVisual {
         ctx.restore();
     }
 
-    private drawLabel(x: number, y: number, text: string, color: string = '#00d1ff') {
+    private drawLabel(x: number, y: number, text: string, color: string = this.indexColor) {
         const ctx = this.ctx;
         ctx.save();
-        ctx.font = '12px sans-serif';
+        ctx.font = `${this.indexLabelFontPx}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         const w = ctx.measureText(text).width;
@@ -162,9 +176,28 @@ class AreaMeasurementVisual {
         // draw point indices near points for easier selection (highlight if in splitSelection)
         const selected = new Set((this.data.splitSelection ?? []).map(i => i));
         pts.forEach((p, i) => {
-            const color = selected.has(i) ? '#ffd400' : '#00d1ff';
-            this.drawLabel(p.x, p.y - 10, `P${i + 1}`, color);
+            const color = selected.has(i) ? this.indexSelectedColor : this.indexColor;
+            this.drawLabel(p.x, p.y - this.indexLabelOffset, `P${i + 1}`, color);
         });
+
+        // if two split points are selected, draw a dashed seam between them
+        if (selected.size === 2) {
+            const ids = Array.from(selected.values()).sort((a, b) => a - b);
+            const a = pts[ids[0]];
+            const b = pts[ids[1]];
+            if (a && b) {
+                const ctx = this.ctx;
+                ctx.save();
+                ctx.setLineDash([8, 6]);
+                ctx.strokeStyle = this.indexSelectedColor;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
 
         // area label at centroid if closed
         if (this.data.closed && pts.length >= 3 && this.data.area !== null) {
