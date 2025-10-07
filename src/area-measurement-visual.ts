@@ -103,15 +103,16 @@ class AreaMeasurementVisual {
         ctx.restore();
     }
 
-    private drawLabel(x: number, y: number, text: string) {
+    private drawLabel(x: number, y: number, text: string, color: string = '#00d1ff') {
         const ctx = this.ctx;
         ctx.save();
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
+        const w = ctx.measureText(text).width;
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(x - ctx.measureText(text).width / 2 - 4, y - 16, ctx.measureText(text).width + 8, 14);
-        ctx.fillStyle = '#00d1ff';
+        ctx.fillRect(x - w / 2 - 4, y - 16, w + 8, 14);
+        ctx.fillStyle = color;
         ctx.fillText(text, x, y - 2);
         ctx.restore();
     }
@@ -158,6 +159,13 @@ class AreaMeasurementVisual {
             const color = (redoIndex !== null && i === redoIndex) ? flashColor : defaultColor;
             this.drawPoint(p.x, p.y, color);
         });
+        // draw point indices near points for easier selection (highlight if in splitSelection)
+        const selected = new Set((this.data.splitSelection ?? []).map(i => i));
+        pts.forEach((p, i) => {
+            const color = selected.has(i) ? '#ffd400' : '#00d1ff';
+            this.drawLabel(p.x, p.y - 10, `P${i + 1}`, color);
+        });
+
         // area label at centroid if closed
         if (this.data.closed && pts.length >= 3 && this.data.area !== null) {
             const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
