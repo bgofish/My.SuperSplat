@@ -145,6 +145,10 @@ class AreaMeasurementTool {
         this.points = [];
         this.closed = false;
         this.redoIndex = null;
+        this.splitSelection = [];
+        this.splitAreas = null;
+        // notify UI to exit split mode and clear any seam selection
+        this.events.fire('area.measure.split.cancel');
         // clear overlay immediately
         this.events.fire('area.measure.visual.clear');
         this.publish();

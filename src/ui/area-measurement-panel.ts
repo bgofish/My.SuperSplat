@@ -47,7 +47,16 @@ class AreaMeasurementPanel extends Panel {
             btn.dom.addEventListener('click', handler, true);
             btn.dom.addEventListener('pointerdown', handler, true);
         };
-        bindBtn(this.clearBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.clear'); });
+        bindBtn(this.clearBtn, () => {
+            this.events.fire('area.measure.disable.temporary');
+            // reset split UI immediately for clarity
+            if (this.splitMode) {
+                this.splitMode = false;
+                this.updateSplitButtons();
+            }
+            this.events.fire('area.measure.split.cancel');
+            this.events.fire('area.measure.clear');
+        });
         bindBtn(this.closeBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.closePolygon'); });
         bindBtn(this.exitBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.exit'); });
         bindBtn(this.splitBtn, () => {
@@ -86,6 +95,14 @@ class AreaMeasurementPanel extends Panel {
         this.events.on('area.measure.show', () => this.show());
         this.events.on('area.measure.hide', () => this.hide());
         this.events.on('area.measure.toggle', () => this.toggle());
+        // keep UI split mode in sync if tool cancels split (e.g., after clear)
+        this.events.on('area.measure.split.cancel', () => {
+            if (this.splitMode) {
+                this.splitMode = false;
+                this.updateSplitButtons();
+                this.splitResultLabel.text = '';
+            }
+        });
     }
 
     private makePointRow(idx: number, p: Vec3) {
