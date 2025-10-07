@@ -80,7 +80,7 @@ class AreaMeasurementTool {
         this.events.on('area.measure.split.clearAll', () => this.clearAllRidges());
         // Auto-add ridge mode controls
         this.events.on('area.measure.ridge.start', () => { if (this.state !== AreaState.INACTIVE) { this.autoAddRidges = true; this.state = AreaState.SPLIT_SELECT; this.publish(); } });
-        this.events.on('area.measure.ridge.stop', () => { this.autoAddRidges = false; this.publish(); });
+        this.events.on('area.measure.ridge.stop', () => { this.autoAddRidges = false; this.splitSelection = []; this.splitAreas = null; this.state = AreaState.ACTIVE; this.publish(); });
     }
 
     toggle() {

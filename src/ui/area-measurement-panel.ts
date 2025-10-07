@@ -11,12 +11,10 @@ class AreaMeasurementPanel extends Panel {
     private areaLabel: Label;
     private planarityLabel: Label;
     private splitResultLabel: Label;
-    private ridgesContainer: Container;
     private clearBtn: Button;
     private closeBtn: Button;
     private exitBtn: Button;
-    private splitBtn: Button;
-    private cancelSplitBtn: Button;
+    private ridgeToggleBtn: Button;
     private visible = false;
     private splitMode = false;
 
@@ -39,8 +37,7 @@ class AreaMeasurementPanel extends Panel {
         this.ridgesContainer = new Container({ class: 'area-ridges' });
         this.closeBtn = new Button({ text: 'Close Polygon', size: 'small' });
         this.exitBtn = new Button({ text: 'Close', size: 'small' });
-        this.splitBtn = new Button({ text: 'Split Along Ridge', size: 'small' });
-        this.cancelSplitBtn = new Button({ text: 'Cancel Split', size: 'small' });
+        this.ridgeToggleBtn = new Button({ text: 'Start Ridges', size: 'small' });
 
         // Bind actions robustly (both PCUI and raw DOM)
         const bindBtn = (btn: Button, action: () => void) => {
@@ -56,21 +53,24 @@ class AreaMeasurementPanel extends Panel {
                 this.splitMode = false;
                 this.updateSplitButtons();
             }
+            this.ridgeToggleBtn.text = 'Start Ridges';
+            this.events.fire('area.measure.ridge.stop');
             this.events.fire('area.measure.split.cancel');
             this.events.fire('area.measure.clear');
         });
         bindBtn(this.closeBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.closePolygon'); });
         bindBtn(this.exitBtn, () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.exit'); });
-        bindBtn(this.splitBtn, () => {
+        // Single toggle to add ridges continuously
+        this.ridgeToggleBtn.on('click', () => {
             this.events.fire('area.measure.disable.temporary');
-            this.splitMode = true;
-            this.events.fire('area.measure.split.start');
-            this.updateSplitButtons();
-        });
-        bindBtn(this.cancelSplitBtn, () => {
-            this.events.fire('area.measure.disable.temporary');
-            this.splitMode = false;
-            this.events.fire('area.measure.split.cancel');
+            this.splitMode = !this.splitMode;
+            if (this.splitMode) {
+                this.ridgeToggleBtn.text = 'Stop Ridges';
+                this.events.fire('area.measure.ridge.start');
+            } else {
+                this.ridgeToggleBtn.text = 'Start Ridges';
+                this.events.fire('area.measure.ridge.stop');
+            }
             this.updateSplitButtons();
         });
 
@@ -106,8 +106,7 @@ class AreaMeasurementPanel extends Panel {
         const buttons = new Container({ class: 'measurement-buttons' });
         buttons.append(this.clearBtn);
         buttons.append(this.closeBtn);
-        buttons.append(this.splitBtn);
-        buttons.append(this.cancelSplitBtn);
+        buttons.append(this.ridgeToggleBtn);
         buttons.append(this.exitBtn);
 
         this.append(instructions);
@@ -130,8 +129,16 @@ class AreaMeasurementPanel extends Panel {
         this.events.on('area.measure.split.cancel', () => {
             if (this.splitMode) {
                 this.splitMode = false;
+                this.ridgeToggleBtn.text = 'Start Ridges';
                 this.updateSplitButtons();
                 this.splitResultLabel.text = '';
+            }
+        });
+        this.events.on('area.measure.ridge.stop', () => {
+            if (this.splitMode) {
+                this.splitMode = false;
+                this.ridgeToggleBtn.text = 'Start Ridges';
+                this.updateSplitButtons();
             }
         });
     }
@@ -231,13 +238,7 @@ class AreaMeasurementPanel extends Panel {
     }
 
     private updateSplitButtons() {
-        if (this.splitMode) {
-            this.splitBtn.dom.style.display = 'none';
-            this.cancelSplitBtn.dom.style.display = 'inline-block';
-        } else {
-            this.splitBtn.dom.style.display = 'inline-block';
-            this.cancelSplitBtn.dom.style.display = 'none';
-        }
+        // currently handled by ridgeToggleBtn label; nothing else to show/hide
     }
 
     toggle() { this.visible ? this.hide() : this.show(); }
@@ -246,13 +247,15 @@ class AreaMeasurementPanel extends Panel {
         if (this.visible) {
             this.visible = false;
             this.dom.style.display = 'none';
-            // reset split UI state and notify tool to cancel any split selection
+            // reset ridge/split UI state and notify tool to cancel any split selection
             if (this.splitMode) {
                 this.splitMode = false;
                 this.updateSplitButtons();
             }
+            this.ridgeToggleBtn.text = 'Start Ridges';
             this.splitResultLabel.text = '';
             this.planarityLabel.text = '';
+            this.events.fire('area.measure.ridge.stop');
             this.events.fire('area.measure.split.cancel');
         }
     }
