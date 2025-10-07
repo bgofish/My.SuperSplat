@@ -200,11 +200,14 @@ class AreaMeasurementTool {
         if (!this.splitAreas || this.splitSelection.length !== 2) return;
         const [i, j] = this.splitSelection.slice().sort((a, b) => a - b);
         // store just endpoints; areas will be recomputed for all ridges on publish
-        this.ridges.push({ i, j });
-        // reset selection for next ridge
+        // avoid duplicates
+        if (!this.ridges.some(r => (r.i === i && r.j === j) || (r.i === j && r.j === i))) {
+            this.ridges.push({ i, j });
+        }
+        // reset selection for next ridge, but stay in split mode
         this.splitSelection = [];
         this.splitAreas = null;
-        this.state = AreaState.ACTIVE;
+        this.state = AreaState.SPLIT_SELECT;
         this.publish();
     }
 
