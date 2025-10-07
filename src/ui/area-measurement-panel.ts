@@ -17,6 +17,7 @@ class AreaMeasurementPanel extends Panel {
     private ridgeToggleBtn: Button;
     private visible = false;
     private splitMode = false;
+    private lastData: AreaMeasurementData | null = null;
 
     constructor(events: Events) {
         super({
@@ -72,6 +73,7 @@ class AreaMeasurementPanel extends Panel {
                 this.events.fire('area.measure.ridge.stop');
             }
             this.updateSplitButtons();
+            if (this.lastData) this.update(this.lastData);
         });
 
         const instructions = new Label({ text: 'Click to add points. Press "Connect" to close the polygon.', class: 'measurement-instructions' });
@@ -125,6 +127,8 @@ class AreaMeasurementPanel extends Panel {
         this.events.on('area.measure.show', () => this.show());
         this.events.on('area.measure.hide', () => this.hide());
         this.events.on('area.measure.toggle', () => this.toggle());
+        // keep a copy of last data to force immediate re-render when toggling
+        this.events.on('area.measure.updated', (d: AreaMeasurementData) => { this.lastData = d; });
         // keep UI split mode in sync if tool cancels split (e.g., after clear)
         this.events.on('area.measure.split.cancel', () => {
             if (this.splitMode) {
@@ -132,6 +136,7 @@ class AreaMeasurementPanel extends Panel {
                 this.ridgeToggleBtn.text = 'Start Ridges';
                 this.updateSplitButtons();
                 this.splitResultLabel.text = '';
+                if (this.lastData) this.update(this.lastData);
             }
         });
         this.events.on('area.measure.ridge.stop', () => {
@@ -139,6 +144,7 @@ class AreaMeasurementPanel extends Panel {
                 this.splitMode = false;
                 this.ridgeToggleBtn.text = 'Start Ridges';
                 this.updateSplitButtons();
+                if (this.lastData) this.update(this.lastData);
             }
         });
     }
@@ -204,6 +210,7 @@ class AreaMeasurementPanel extends Panel {
         }
 
         // ridges list
+        this.lastData = data;
         this.ridgesContainer.clear();
         if (data.ridges && data.ridges.length) {
             data.ridges.forEach((r, idx) => {
