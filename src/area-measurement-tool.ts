@@ -627,11 +627,12 @@ class AreaMeasurementTool {
     private publish() {
         const surfaces = this.computeSurfacesFromRidges();
         const totalSurfaces = surfaces ? surfaces.reduce((s, f) => s + f.area, 0) : null;
+        const areaValue = totalSurfaces !== null ? totalSurfaces : this.computeArea();
         const data: AreaMeasurementData = {
             points: this.points.slice(),
             edges: this.buildEdges(),
             closed: this.closed,
-            area: this.computeArea(),
+            area: areaValue,
             redoIndex: this.state === AreaState.WAITING_REDO ? this.redoIndex : null,
             nonPlanarity: this.closed ? this.computePlanarity() : null,
             splitSelection: this.splitSelection.length ? this.splitSelection.slice() : null,
