@@ -80,13 +80,28 @@ class AreaMeasurementPanel extends Panel {
         const addRidgeBtn = new Button({ text: 'Add Ridge', size: 'small' });
         const undoRidgeBtn = new Button({ text: 'Undo Ridge', size: 'small' });
         const clearRidgesBtn = new Button({ text: 'Clear Ridges', size: 'small' });
-        const bindR = (b: Button, ev: string) => b.on('click', () => { this.events.fire('area.measure.disable.temporary'); this.events.fire(ev); });
-        bindR(addRidgeBtn, 'area.measure.split.add');
-        bindR(undoRidgeBtn, 'area.measure.split.undo');
-        bindR(clearRidgesBtn, 'area.measure.split.clearAll');
         ridgeButtons.append(addRidgeBtn);
         ridgeButtons.append(undoRidgeBtn);
         ridgeButtons.append(clearRidgesBtn);
+        // Toggle auto-add mode on Add Ridge
+        let addingAuto = false;
+        addRidgeBtn.on('click', () => {
+            this.events.fire('area.measure.disable.temporary');
+            if (!this.splitMode) {
+                this.splitMode = true;
+                this.updateSplitButtons();
+            }
+            addingAuto = !addingAuto;
+            if (addingAuto) {
+                addRidgeBtn.text = 'Stop Adding';
+                this.events.fire('area.measure.ridge.start');
+            } else {
+                addRidgeBtn.text = 'Add Ridge';
+                this.events.fire('area.measure.ridge.stop');
+            }
+        });
+        undoRidgeBtn.on('click', () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.split.undo'); });
+        clearRidgesBtn.on('click', () => { this.events.fire('area.measure.disable.temporary'); this.events.fire('area.measure.split.clearAll'); });
 
         const buttons = new Container({ class: 'measurement-buttons' });
         buttons.append(this.clearBtn);

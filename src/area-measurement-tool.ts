@@ -42,6 +42,7 @@ class AreaMeasurementTool {
     private splitSelection: number[] = [];
     private splitAreas: { a: number; b: number; total: number } | null = null;
     private ridges: { i: number; j: number }[] = [];
+    private autoAddRidges = false;
 
     private clicksDisabled = false;
     private lastButtonClickTime = 0;
@@ -77,6 +78,9 @@ class AreaMeasurementTool {
         this.events.on('area.measure.split.add', () => this.addRidgeFromSelection());
         this.events.on('area.measure.split.undo', () => this.undoLastRidge());
         this.events.on('area.measure.split.clearAll', () => this.clearAllRidges());
+        // Auto-add ridge mode controls
+        this.events.on('area.measure.ridge.start', () => { if (this.state !== AreaState.INACTIVE) { this.autoAddRidges = true; this.state = AreaState.SPLIT_SELECT; this.publish(); } });
+        this.events.on('area.measure.ridge.stop', () => { this.autoAddRidges = false; this.publish(); });
     }
 
     toggle() {
@@ -183,7 +187,8 @@ class AreaMeasurementTool {
         if (this.state === AreaState.INACTIVE) return;
         this.splitSelection = [];
         this.splitAreas = null;
-        this.state = AreaState.SPLIT_SELECT;
+        this.state = AreaState.ACTIVE;
+        this.autoAddRidges = false;
         this.publish();
     }
 
@@ -193,21 +198,25 @@ class AreaMeasurementTool {
         }
         this.splitSelection = [];
         this.splitAreas = null;
+        this.autoAddRidges = false;
         this.publish();
     }
 
     private addRidgeFromSelection() {
-        if (!this.splitAreas || this.splitSelection.length !== 2) return;
-        const [i, j] = this.splitSelection.slice().sort((a, b) => a - b);
-        // store just endpoints; areas will be recomputed for all ridges on publish
-        // avoid duplicates
-        if (!this.ridges.some(r => (r.i === i && r.j === j) || (r.i === j && r.j === i))) {
-            this.ridges.push({ i, j });
+        if (this.splitSelection.length === 2) {
+            const [i, j] = this.splitSelection.slice().sort((a, b) => a - b);
+            if (!this.ridges.some(r => (r.i === i && r.j === j) || (r.i === j && r.j === i))) {
+                this.ridges.push({ i, j });
+            }
+            this.splitSelection = [];
+            this.splitAreas = null;
+            this.state = AreaState.SPLIT_SELECT;
+            this.publish();
+            return;
         }
-        // reset selection for next ridge, but stay in split mode
-        this.splitSelection = [];
-        this.splitAreas = null;
-        this.state = AreaState.SPLIT_SELECT;
+        // If no pair yet, pressing Add Ridge puts us into continuous add mode
+        this.autoAddRidges = true;
+        if (this.state !== AreaState.INACTIVE) this.state = AreaState.SPLIT_SELECT;
         this.publish();
     }
 
@@ -282,9 +291,17 @@ class AreaMeasurementTool {
         }
         if (!this.splitSelection.includes(index)) this.splitSelection.push(index);
         if (this.splitSelection.length === 2) {
-            const [i, j] = this.splitSelection;
+            const [i, j] = this.splitSelection.slice().sort((a, b) => a - b);
             const res = this.computeSplitAreas(i, j);
             if (res) this.splitAreas = res;
+            if (this.autoAddRidges) {
+                if (!this.ridges.some(r => (r.i === i && r.j === j))) {
+                    this.ridges.push({ i, j });
+                }
+                this.splitSelection = [];
+                this.splitAreas = null;
+                // remain in SPLIT_SELECT for continuous adding
+            }
         }
         this.publish();
     }
