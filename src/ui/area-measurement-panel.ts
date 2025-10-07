@@ -1,8 +1,8 @@
 import { Button, Container, Label, Panel } from '@playcanvas/pcui';
 import { Vec3 } from 'playcanvas';
 
-import { Events } from '../events';
 import { AreaMeasurementData } from '../area-measurement-tool';
+import { Events } from '../events';
 
 class AreaMeasurementPanel extends Panel {
     private events: Events;
@@ -53,7 +53,11 @@ class AreaMeasurementPanel extends Panel {
         // Bind actions robustly (both PCUI and raw DOM)
         const bindBtn = (btn: Button, action: () => void) => {
             btn.on('click', action);
-            const handler = (e: Event) => { e.preventDefault(); e.stopPropagation(); action(); };
+            const handler = (e: Event) => {
+                e.preventDefault();
+                e.stopPropagation();
+                action();
+            };
             btn.dom.addEventListener('click', handler, true);
             btn.dom.addEventListener('pointerdown', handler, true);
         };
@@ -183,10 +187,24 @@ class AreaMeasurementPanel extends Panel {
         if (selected.has(idx)) pick.dom.style.background = '#ffd400';
         else if (used.has(idx)) pick.dom.style.background = '#00bcd4';
         pick.dom.style.color = '#000';
-        redo.dom.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); doRedo(); }, true);
-        pick.dom.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); doPick(); }, true);
-        redo.dom.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
-        pick.dom.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        const clickRedo = (e: Event) => {
+            e.preventDefault();
+            e.stopPropagation();
+            doRedo();
+        };
+        const clickPick = (e: Event) => {
+            e.preventDefault();
+            e.stopPropagation();
+            doPick();
+        };
+        const pdStop = (e: Event) => {
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        redo.dom.addEventListener('click', clickRedo, true);
+        pick.dom.addEventListener('click', clickPick, true);
+        redo.dom.addEventListener('pointerdown', pdStop, true);
+        pick.dom.addEventListener('pointerdown', pdStop, true);
         row.append(label);
         row.append(redo);
         if (this.splitMode) row.append(pick);
@@ -228,13 +246,13 @@ class AreaMeasurementPanel extends Panel {
         this.ridgesContainer.clear();
         if (data.ridges && data.ridges.length) {
             data.ridges.forEach((r, idx) => {
-                const lbl = new Label({ text: `R${idx + 1}: P${r.i + 1} ↔ P${r.j + 1}` , class: 'measurement-value' });
+                const lbl = new Label({ text: `R${idx + 1}: P${r.i + 1} ↔ P${r.j + 1}`, class: 'measurement-value' });
                 this.ridgesContainer.append(lbl);
             });
         }
         if (data.surfaces && data.surfaces.length) {
             data.surfaces.forEach((s, idx) => {
-                const lbl = new Label({ text: `S${idx + 1}: ${s.area.toFixed(3)} (indices ${s.indices.map(i=>`P${i+1}`).join('→')})`, class: 'measurement-value' });
+                const lbl = new Label({ text: `S${idx + 1}: ${s.area.toFixed(3)} (indices ${s.indices.map((i) => `P${i + 1}`).join('→')})`, class: 'measurement-value' });
                 this.ridgesContainer.append(lbl);
             });
             if (data.surfacesTotal !== null) {

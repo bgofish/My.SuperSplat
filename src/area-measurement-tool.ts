@@ -79,8 +79,20 @@ class AreaMeasurementTool {
         this.events.on('area.measure.split.undo', () => this.undoLastRidge());
         this.events.on('area.measure.split.clearAll', () => this.clearAllRidges());
         // Auto-add ridge mode controls
-        this.events.on('area.measure.ridge.start', () => { if (this.state !== AreaState.INACTIVE) { this.autoAddRidges = true; this.state = AreaState.SPLIT_SELECT; this.publish(); } });
-        this.events.on('area.measure.ridge.stop', () => { this.autoAddRidges = false; this.splitSelection = []; this.splitAreas = null; this.state = AreaState.ACTIVE; this.publish(); });
+        this.events.on('area.measure.ridge.start', () => {
+            if (this.state !== AreaState.INACTIVE) {
+                this.autoAddRidges = true;
+                this.state = AreaState.SPLIT_SELECT;
+                this.publish();
+            }
+        });
+        this.events.on('area.measure.ridge.stop', () => {
+            this.autoAddRidges = false;
+            this.splitSelection = [];
+            this.splitAreas = null;
+            this.state = AreaState.ACTIVE;
+            this.publish();
+        });
     }
 
     toggle() {
@@ -238,7 +250,7 @@ class AreaMeasurementTool {
         if (!this.closed || this.points.length < 3) return null;
         if (this.ridges.length === 0) return null;
         // start with the full polygon indices
-        let polys: number[][] = [Array.from({ length: this.points.length }, (_, i) => i)];
+        const polys: number[][] = [Array.from({ length: this.points.length }, (_, i) => i)];
         const splitSeq = (seq: number[], i: number, j: number): [number[], number[]] | null => {
             const pi = seq.indexOf(i);
             const pj = seq.indexOf(j);
@@ -247,7 +259,8 @@ class AreaMeasurementTool {
                 const a = seq.slice(pi, pj + 1);
                 const b = seq.slice(pj).concat(seq.slice(0, pi + 1));
                 return [a, b];
-            } else {
+            }
+            // pi > pj
                 const a = seq.slice(pj, pi + 1);
                 const b = seq.slice(pi).concat(seq.slice(0, pj + 1));
                 return [a, b];
@@ -561,15 +574,36 @@ class AreaMeasurementTool {
         const to2 = (p: Vec3): V2 => (dropAxis === 0 ? { x: p.y, y: p.z } : dropAxis === 1 ? { x: p.x, y: p.z } : { x: p.x, y: p.y });
         const poly2: V2[] = pts.map(to2);
         const orient = () => {
-            let a = 0; for (let i = 0; i < poly2.length; i++) { const p = poly2[i]; const q = poly2[(i + 1) % poly2.length]; a += p.x * q.y - q.x * p.y; }
+            let a = 0;
+            for (let i = 0; i < poly2.length; i++) {
+                const p = poly2[i];
+                const q = poly2[(i + 1) % poly2.length];
+                a += p.x * q.y - q.x * p.y;
+            }
             return Math.sign(a) || 1;
         };
         const orientation = orient();
-        const isConvex = (a: V2, b: V2, c: V2) => { const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); return orientation > 0 ? cross > 0 : cross < 0; };
-        const insideTri = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, px: number, py: number) => {
-            const abx = bx - ax, aby = by - ay; const bcx = cx - bx, bcy = cy - by; const cax = ax - cx, cay = ay - cy;
-            const apx = px - ax, apy = py - ay; const bpx = px - bx, bpy = py - by; const cpx = px - cx, cpy = py - cy;
-            const c1 = abx * apy - aby * apx; const c2 = bcx * bpy - bcy * bpx; const c3 = cax * cpy - cay * cpx; return orientation > 0 ? (c1 >= 0 && c2 >= 0 && c3 >= 0) : (c1 <= 0 && c2 <= 0 && c3 <= 0);
+        const isConvex = (a: V2, b: V2, c: V2) => {
+            const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+            return orientation > 0 ? cross > 0 : cross < 0;
+        };
+        const insideTri = (
+            ax: number, ay: number,
+            bx: number, by: number,
+            cx: number, cy: number,
+            px: number, py: number
+        ) => {
+            const abx = bx - ax, aby = by - ay;
+            const bcx = cx - bx, bcy = cy - by;
+            const cax = ax - cx, cay = ay - cy;
+            const apx = px - ax, apy = py - ay;
+            const bpx = px - bx, bpy = py - by;
+            const cpx = px - cx, cpy = py - cy;
+            const c1 = abx * apy - aby * apx;
+            const c2 = bcx * bpy - bcy * bpx;
+            const c3 = cax * cpy - cay * cpx;
+            if (orientation > 0) return c1 >= 0 && c2 >= 0 && c3 >= 0;
+            return c1 <= 0 && c2 <= 0 && c3 <= 0;
         };
         const indices = Array.from({ length: poly2.length }, (_, i) => i);
         const triangles: [number, number, number][] = [];
@@ -577,31 +611,63 @@ class AreaMeasurementTool {
         while (indices.length > 3 && guard++ < 10000) {
             let earFound = false;
             for (let i = 0; i < indices.length; i++) {
-                const i0 = indices[(i + indices.length - 1) % indices.length]; const i1 = indices[i]; const i2 = indices[(i + 1) % indices.length];
-                const a = poly2[i0], b = poly2[i1], c = poly2[i2]; if (!isConvex(a, b, c)) continue;
-                let contains = false; for (let j = 0; j < indices.length; j++) { const k = indices[j]; if (k === i0 || k === i1 || k === i2) continue; const p = poly2[k]; if (insideTri(a.x, a.y, b.x, b.y, c.x, c.y, p.x, p.y)) { contains = true; break; } }
-                if (contains) continue; triangles.push([i0, i1, i2]); indices.splice(i, 1); earFound = true; break;
+                const i0 = indices[(i + indices.length - 1) % indices.length];
+                const i1 = indices[i];
+                const i2 = indices[(i + 1) % indices.length];
+                const a = poly2[i0];
+                const b = poly2[i1];
+                const c = poly2[i2];
+                if (!isConvex(a, b, c)) continue;
+                let contains = false;
+                for (let j = 0; j < indices.length; j++) {
+                    const k = indices[j];
+                    if (k === i0 || k === i1 || k === i2) continue;
+                    const p = poly2[k];
+                    if (insideTri(a.x, a.y, b.x, b.y, c.x, c.y, p.x, p.y)) {
+                        contains = true;
+                        break;
+                    }
+                }
+                if (contains) continue;
+                triangles.push([i0, i1, i2]);
+                indices.splice(i, 1);
+                earFound = true;
+                break;
             }
             if (!earFound) break;
         }
         if (indices.length === 3) triangles.push([indices[0], indices[1], indices[2]]);
-        let area = 0; for (const [a, b, c] of triangles) { area += triArea3D(pts[a], pts[b], pts[c]); }
+        let area = 0;
+        for (const [a, b, c] of triangles) {
+            area += triArea3D(pts[a], pts[b], pts[c]);
+        }
         return area;
     }
 
     private computePlanarity(): { rms: number; max: number } | null {
         if (this.points.length < 3) return null;
         // Newell normal
-        let nx = 0, ny = 0, nz = 0; const n = this.points.length;
-        for (let i = 0; i < n; i++) { const p = this.points[i]; const q = this.points[(i + 1) % n]; nx += (p.y - q.y) * (p.z + q.z); ny += (p.z - q.z) * (p.x + q.x); nz += (p.x - q.x) * (p.y + q.y); }
-        const len = Math.sqrt(nx * nx + ny * ny + nz * nz); if (len < EPS) return { rms: 0, max: 0 };
+        let nx = 0, ny = 0, nz = 0;
+        const n = this.points.length;
+        for (let i = 0; i < n; i++) {
+            const p = this.points[i];
+            const q = this.points[(i + 1) % n];
+            nx += (p.y - q.y) * (p.z + q.z);
+            ny += (p.z - q.z) * (p.x + q.x);
+            nz += (p.x - q.x) * (p.y + q.y);
+        }
+        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (len < EPS) return { rms: 0, max: 0 };
         nx /= len; ny /= len; nz /= len;
         const p0 = this.points[0];
         let sum2 = 0, max = 0;
         for (const p of this.points) {
-            const dx = p.x - p0.x, dy = p.y - p0.y, dz = p.z - p0.z;
+            const dx = p.x - p0.x;
+            const dy = p.y - p0.y;
+            const dz = p.z - p0.z;
             const d = Math.abs(nx * dx + ny * dy + nz * dz);
-            sum2 += d * d; if (d > max) max = d;
+            sum2 += d * d;
+            if (d > max) max = d;
         }
         return { rms: Math.sqrt(sum2 / n), max };
     }

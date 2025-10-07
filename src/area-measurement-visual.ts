@@ -1,8 +1,8 @@
 import { Vec3 } from 'playcanvas';
 
+import { AreaMeasurementData } from './area-measurement-tool';
 import { Events } from './events';
 import { Scene } from './scene';
-import { AreaMeasurementData } from './area-measurement-tool';
 
 class AreaMeasurementVisual {
     private scene: Scene;
